@@ -44,9 +44,17 @@ export default defineConfig(async () => {
   const { cloudflare } = await import("@cloudflare/vite-plugin");
 
   return {
-    server: isCodexSeatbeltSandbox
-      ? { watch: { useFsEvents: false, usePolling: true } }
-      : undefined,
+    server: {
+      // Vite 8 auto-enables browser console forwarding when it detects an
+      // agent environment. During a hard reload the forwarding transport can
+      // be unavailable, causing its own `send` error to recursively refill
+      // Vinext's error overlay. Normal browser errors remain visible locally;
+      // only the unstable forwarding bridge is disabled.
+      forwardConsole: false,
+      ...(isCodexSeatbeltSandbox
+        ? { watch: { useFsEvents: false, usePolling: true } }
+        : {}),
+    },
     plugins: [
       vinext(),
       sites(),

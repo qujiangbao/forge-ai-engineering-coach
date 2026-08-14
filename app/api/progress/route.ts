@@ -1,11 +1,8 @@
 import { env } from "cloudflare:workers";
 import { getChatGPTUser } from "../../chatgpt-auth";
+import { baseSkills, tasks } from "../../data";
 
-const defaultSkills = {
-  "Code Reading": 72, "Code Modification": 64, "Debug": 61,
-  "System Design": 49, "Acceptance Testing": 54, "Business Analysis": 68,
-  "AI Orchestration": 57, "Delivery": 52,
-};
+const defaultSkills = baseSkills;
 
 async function ensureTables() {
   const db = env.DB;
@@ -42,17 +39,24 @@ export async function POST(request: Request) {
   try {
     await ensureTables();
     const user = await identity();
-    const body = await request.json() as { taskId: string; taskTitle: string; diagnosis: string; evidence: string; hintsUsed: number; score: number; skillGains: Record<string, number> };
+    const body = await request.json() as { taskId: string; diagnosis: string; evidence: string; hintsUsed: number };
     if (!body.taskId || !body.diagnosis || !body.evidence) return Response.json({ error: "missing evidence" }, { status: 400 });
+    const task = tasks.find(candidate => candidate.id === body.taskId);
+    if (!task) return Response.json({ error: "unknown task" }, { status: 400 });
+    const hintsUsed = Math.max(0, Math.min(2, Number(body.hintsUsed) || 0));
+    const score = Math.max(40, 100 - hintsUsed * 12);
     const now = new Date().toISOString();
     const current = await env.DB.prepare("SELECT * FROM profiles WHERE user_id = ?").bind(user.userId).first<{skills_json:string;xp:number}>();
+    const previousSession = await env.DB.prepare("SELECT id FROM training_sessions WHERE user_id = ? AND task_id = ?").bind(user.userId, task.id).first<{id:number}>();
+    const awarded = !previousSession;
     const skills = current ? JSON.parse(current.skills_json) as Record<string, number> : { ...defaultSkills };
-    for (const [name, gain] of Object.entries(body.skillGains)) skills[name] = Math.min(100, (skills[name] ?? 40) + gain);
+    if (awarded) for (const [name, gain] of Object.entries(task.gains)) skills[name] = Math.min(100, (skills[name] ?? 40) + gain);
+    const xp = (current?.xp ?? 680) + (awarded ? score : 0);
     await env.DB.batch([
-      env.DB.prepare(`INSERT INTO profiles (user_id, display_name, xp, streak, skills_json, updated_at) VALUES (?, ?, ?, 7, ?, ?) ON CONFLICT(user_id) DO UPDATE SET display_name=excluded.display_name, xp=excluded.xp, skills_json=excluded.skills_json, updated_at=excluded.updated_at`).bind(user.userId, user.displayName, (current?.xp ?? 680) + body.score, JSON.stringify(skills), now),
-      env.DB.prepare(`INSERT INTO training_sessions (user_id, task_id, task_title, diagnosis, evidence, hints_used, score, skill_gains_json, completed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(user_id, task_id) DO UPDATE SET diagnosis=excluded.diagnosis, evidence=excluded.evidence, hints_used=excluded.hints_used, score=excluded.score, skill_gains_json=excluded.skill_gains_json, completed_at=excluded.completed_at`).bind(user.userId, body.taskId, body.taskTitle, body.diagnosis, body.evidence, body.hintsUsed, body.score, JSON.stringify(body.skillGains), now),
+      env.DB.prepare(`INSERT INTO profiles (user_id, display_name, xp, streak, skills_json, updated_at) VALUES (?, ?, ?, 7, ?, ?) ON CONFLICT(user_id) DO UPDATE SET display_name=excluded.display_name, xp=excluded.xp, skills_json=excluded.skills_json, updated_at=excluded.updated_at`).bind(user.userId, user.displayName, xp, JSON.stringify(skills), now),
+      env.DB.prepare(`INSERT INTO training_sessions (user_id, task_id, task_title, diagnosis, evidence, hints_used, score, skill_gains_json, completed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(user_id, task_id) DO UPDATE SET diagnosis=excluded.diagnosis, evidence=excluded.evidence, hints_used=excluded.hints_used, score=excluded.score, skill_gains_json=excluded.skill_gains_json, completed_at=excluded.completed_at`).bind(user.userId, task.id, task.title, body.diagnosis, body.evidence, hintsUsed, score, JSON.stringify(task.gains), now),
     ]);
-    return Response.json({ ok: true, skills, xp: (current?.xp ?? 680) + body.score });
+    return Response.json({ ok: true, awarded, skills, xp });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "save failed" }, { status: 500 });
   }
