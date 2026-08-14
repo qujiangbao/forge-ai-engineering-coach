@@ -8,6 +8,13 @@
       "when": 1786684862215,
       "tag": "0000_vengeful_dagger",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1786715915895,
+      "tag": "0001_fine_smasher",
+      "breakpoints": true
     }
   ]
 }

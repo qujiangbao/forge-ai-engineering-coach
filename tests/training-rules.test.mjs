@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { baseSkills, taskChecks, tasks } from "../app/data.ts";
+import { baseSkills, selectDailyTasks, taskChecks, tasks } from "../app/data.ts";
 
 function evaluate(task, workspace) {
   const normalized = workspace.toLocaleLowerCase().replace(/\s+/g, "");
@@ -42,5 +42,25 @@ test("every reference solution passes its real acceptance checks", () => {
 test("unmodified workspaces cannot silently pass all checks", () => {
   for (const task of tasks) {
     assert.equal(evaluate(task, task.context).every(Boolean), false, task.id);
+  }
+});
+
+test("continuous bank has enough templates and three limited hints", () => {
+  assert.ok(tasks.length >= 20);
+  for (const task of tasks) assert.equal(task.hints.length, 3, task.id);
+});
+
+test("daily rotation excludes recently completed variants", () => {
+  const first = selectDailyTasks([], baseSkills, new Date("2026-08-14T00:00:00Z"), 3);
+  assert.equal(new Set(first.map((task) => task.id)).size, 3);
+  const recent = first.map((task) => task.variantId);
+  const second = selectDailyTasks(recent, baseSkills, new Date("2026-08-15T00:00:00Z"), 3);
+  assert.equal(second.some((task) => recent.includes(task.variantId)), false);
+});
+
+test("task bank exposes multi-file labs and L1-L5 difficulty", () => {
+  for (const task of tasks) {
+    assert.ok(task.files.length >= 2, task.id);
+    assert.ok(task.difficultyLevel >= 1 && task.difficultyLevel <= 5, task.id);
   }
 });
