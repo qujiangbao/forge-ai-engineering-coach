@@ -13,7 +13,7 @@ function evaluate(task, workspace) {
   );
 }
 
-test("covers the complete thirteen-skill closed-loop engineering matrix", () => {
+test("covers the complete world-model and AI-control engineering matrix", () => {
   assert.deepEqual(Object.keys(baseSkills), [
     "System Modeling",
     "Planning",
@@ -27,8 +27,18 @@ test("covers the complete thirteen-skill closed-loop engineering matrix", () => 
     "Specification",
     "Architecture Reasoning",
     "Verification",
+    "Scope Control",
+    "Cognitive Load Management",
+    "Review Capacity",
+    "Context Management",
+    "AI Output Control",
+    "Change Impact Analysis",
+    "Diff Review",
+    "Architecture Guardrails",
+    "AI Pacing",
     "Engineering Ownership",
   ]);
+  assert.equal(Object.keys(baseSkills).length, 22);
 });
 
 test("every mission has four executable acceptance checks", () => {
@@ -92,4 +102,22 @@ test("advanced bank covers ambiguous, false-alarm, multi-root and cross-module s
     assert.ok(task.expectedObservation?.length > 8, task.id);
     assert.ok(task.tools?.includes("runtime"), task.id);
   }
+});
+
+test("every task enforces a bounded, reviewable AI change", () => {
+  for (const task of tasks) {
+    assert.ok(task.changeBudget.maxFiles >= 1, task.id);
+    assert.ok(task.changeBudget.maxLines >= 40, task.id);
+    assert.equal(task.aiSuggestions.length, 3, task.id);
+    assert.ok(task.aiSubmission.filesChanged >= 1, task.id);
+    assert.equal(typeof task.aiSubmission.linesAdded, "number", task.id);
+  }
+});
+
+test("bank covers all cognitive-load and scope-control challenges", () => {
+  const types = new Set(tasks.map((task) => task.type));
+  for (const type of ["OVERSIZED AI DIFF","SCOPE CREEP CHALLENGE","ARCHITECTURE DRIFT CHALLENGE","UNNECESSARY REFACTOR","DEPENDENCY EXPLOSION","MIGRATION RISK CHALLENGE","AI OVERGENERATION","CONTEXT DRIFT","HIDDEN CHANGE","REVIEW OVERLOAD"]) {
+    assert.ok(types.has(type), type);
+  }
+  assert.ok(tasks.length >= 40);
 });

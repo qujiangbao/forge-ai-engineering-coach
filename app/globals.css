@@ -47,3 +47,36 @@ footer{height:76px;margin:0 3.5vw;display:flex;justify-content:space-between;ali
 @media(max-width:900px){.stagebar.stagebar-eight{overflow-x:auto;grid-template-columns:repeat(8,minmax(92px,1fr));justify-content:start}.loop-strip.loop-eight{grid-template-columns:repeat(4,1fr)}.loop-score-grid{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:760px){.model-axis{grid-template-columns:1fr}.model-axis b{padding:4px}.feedback-feed{grid-template-columns:1fr}.fault-banner{grid-template-columns:1fr}.stagebar.stagebar-eight{padding-inline:12px}.structured-field select{font-size:16px}}
 @media(max-width:440px){.loop-strip.loop-eight{grid-template-columns:repeat(2,1fr)}}
+
+/* Cognitive load, scope lock and human review capacity */
+.change-budget,.debt-dashboard{display:grid;grid-template-columns:repeat(5,1fr);border:1px solid var(--ink);margin:0 0 18px}
+.change-budget>div,.debt-dashboard>div{padding:13px;border-right:1px solid var(--ink);min-width:0}
+.change-budget>div:last-child,.debt-dashboard>div:last-child{border-right:0}
+.change-budget span,.debt-dashboard span,.debt-dashboard small{display:block;font:7px var(--font-geist-mono);color:var(--muted)}
+.change-budget b,.debt-dashboard b{display:block;font:700 20px var(--font-geist-mono);margin-top:7px}
+.debt-dashboard{background:#f0eee6;margin:0}
+.debt-dashboard.danger{background:#fff0e9;border-color:var(--orange)}
+.debt-dashboard small{font-size:6px;margin-top:5px;line-height:1.4}
+.debt-dashboard.danger>div:first-child b,.debt-dashboard.danger>div:first-child small{color:var(--orange)}
+.stop-warning{display:flex;justify-content:space-between;gap:20px;background:var(--orange);color:white;padding:13px 20px;font-size:9px;line-height:1.5}
+.stop-warning b{font:800 9px var(--font-geist-mono)}
+.approval-gate{border:2px solid var(--ink);padding:17px;margin-top:20px;background:#f0eee6}
+.approval-gate>b{font:8px var(--font-geist-mono);color:var(--orange)}
+.approval-gate p{font-size:10px;color:var(--muted)}
+.approval-gate button,.suggestion-queue button{border:1px solid #999;background:transparent;padding:8px 10px;margin:3px;font-size:9px}
+.approval-gate button.selected,.suggestion-queue button.selected{background:var(--lime);border-color:var(--ink);font-weight:700}
+.scope-actions{flex-wrap:wrap}
+.capacity-slider{display:block;border:1px solid var(--line);background:#f0eee6;padding:12px;margin:12px 0;font:8px var(--font-geist-mono)}
+.capacity-slider b{float:right;color:var(--orange)}
+.capacity-slider input{width:100%;margin-top:10px;accent-color:var(--ink)}
+.approval-check{background:#fff0e9;border:1px solid var(--orange);padding:10px}
+.suggestion-queue{border:1px solid var(--ink);margin-top:18px}
+.suggestion-queue>div{display:flex;justify-content:space-between;background:var(--ink);color:white;padding:12px}
+.suggestion-queue>div b,.suggestion-queue>div span{font:8px var(--font-geist-mono)}
+.suggestion-queue>div span{color:var(--lime)}
+.suggestion-queue article{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;border-top:1px solid var(--line);padding:10px 12px}
+.suggestion-queue article:first-of-type{border-top:0}
+.suggestion-queue p{margin:0}
+.suggestion-queue strong,.suggestion-queue small{display:block}
+.suggestion-queue strong{font-size:10px}.suggestion-queue small{font:7px/1.5 var(--font-geist-mono);color:var(--muted);margin-top:3px}
+@media(max-width:760px){.change-budget,.debt-dashboard{grid-template-columns:repeat(2,1fr)}.change-budget>div,.debt-dashboard>div{border-bottom:1px solid var(--ink)}.stop-warning{display:block}.stop-warning span{display:block;margin-top:6px}.suggestion-queue article{grid-template-columns:1fr}.suggestion-queue>div{display:block}.suggestion-queue>div span{display:block;margin-top:5px}}

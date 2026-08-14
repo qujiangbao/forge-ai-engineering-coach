@@ -13,11 +13,11 @@ type RequestIdentity={userId:string;displayName:string;setCookie:boolean};
 type Diagnosis={phenomenon?:string;facts?:string;hypothesis?:string;firstCheckpoint?:string;supportingEvidence?:string;counterEvidence?:string;nextExperiment?:string};
 type Observation={signals?:string;knownFacts?:string;unknowns?:string;sources?:string};
 type SystemModel={boundary?:string;currentState?:string;expectedState?:string;transition?:string;callChain?:string;dataFlow?:string;dependencies?:string;runtimeState?:string};
-type ActionPlan={candidateActions?:string;nextBestAction?:string;selectedTool?:string;informationGain?:number;expectedObservation?:string;cost?:string;risk?:string;fallback?:string};
+type ActionPlan={candidateActions?:string;nextBestAction?:string;selectedTool?:string;informationGain?:number;expectedObservation?:string;cost?:string;risk?:string;fallback?:string;scopeGoal?:string;proposedFiles?:string;impactAnalysis?:string;excludedChanges?:string;contextBudget?:string;approvalDecision?:"approve"|"split"|"reject"};
 type StateUpdate={actionResult?:string;newObservation?:string;modelChanged?:string;hypothesisStatus?:string;replannedAction?:string};
 type Evidence={action?:string;actual?:string;dataState?:string;reason?:string};
 type Reflection={initialJudgment?:string;actualRootCause?:string;wrongAssumption?:string;keyEvidence?:string;helpfulHint?:string;nextFirstStep?:string;designRationale?:string;alternative?:string;largestRisk?:string;refactorTrigger?:string};
-type ReviewDecision={decision?:"accept"|"reject"|"changes";riskLevel?:"P0"|"P1"|"P2"|"P3";issues?:string;rationale?:string;revisionRequest?:string;architectureDriftDetected?:boolean;trustBefore?:number;trustAfter?:number};
+type ReviewDecision={decision?:"accept"|"reject"|"changes";scopeDecision?:"accept"|"reject"|"split"|"rollback"|"smaller";riskLevel?:"P0"|"P1"|"P2"|"P3";issues?:string;rationale?:string;revisionRequest?:string;understanding?:string;rollback?:string;architectureDriftDetected?:boolean;impactApproved?:boolean;reviewCapacity?:number;trustBefore?:number;trustAfter?:number;suggestionDecisions?:Record<string,string>};
 
 async function identity():Promise<RequestIdentity>{
   const signedInUser=await getChatGPTUser();
@@ -44,7 +44,7 @@ function validDiagnosis(value:Diagnosis){return(value.phenomenon?.trim().length?
 function validEvidence(value:Evidence){return(value.action?.trim().length??0)>=4&&(value.actual?.trim().length??0)>=4&&(value.reason?.trim().length??0)>=8}
 function validObservation(value:Observation){return(value.signals?.trim().length??0)>=6&&(value.knownFacts?.trim().length??0)>=6&&(value.unknowns?.trim().length??0)>=4}
 function validModel(value:SystemModel){return(value.boundary?.trim().length??0)>=6&&(value.currentState?.trim().length??0)>=6&&(value.expectedState?.trim().length??0)>=6&&(value.callChain?.trim().length??0)>=6}
-function validPlan(value:ActionPlan){return(value.candidateActions?.trim().length??0)>=8&&(value.nextBestAction?.trim().length??0)>=6&&(value.selectedTool?.trim().length??0)>=2&&(value.expectedObservation?.trim().length??0)>=6}
+function validPlan(value:ActionPlan){return(value.candidateActions?.trim().length??0)>=8&&(value.nextBestAction?.trim().length??0)>=6&&(value.selectedTool?.trim().length??0)>=2&&(value.expectedObservation?.trim().length??0)>=6&&(value.scopeGoal?.trim().length??0)>=6&&(value.proposedFiles?.trim().length??0)>=4&&(value.impactAnalysis?.trim().length??0)>=8&&value.approvalDecision==="approve"}
 function validStateUpdate(value:StateUpdate){return(value.actionResult?.trim().length??0)>=6&&(value.newObservation?.trim().length??0)>=6&&(value.modelChanged?.trim().length??0)>=6&&(value.hypothesisStatus?.trim().length??0)>=6}
 
 export async function GET(){
@@ -79,7 +79,7 @@ export async function POST(request:Request){
     let task=tasks.find(candidate=>candidate.id===body.taskId);
     if(!task&&body.taskId){const [custom]=await getDb().select().from(taskCatalog).where(eq(taskCatalog.id,body.taskId)).limit(1);task=custom?parseJson<Task|null>(custom.taskJson,null)??undefined:undefined}
     const review=body.reviewDecision??{};const specificationCoverage=Array.isArray(body.specificationCoverage)?body.specificationCoverage:[];const releaseChecks=Array.isArray(body.releaseChecks)?body.releaseChecks:[];
-    if(!task||!body.variantId||!validObservation(observation)||!validModel(systemModel)||!validDiagnosis(diagnosis)||!validPlan(actionPlan)||!validEvidence(evidence)||!validStateUpdate(stateUpdate)||!Array.isArray(body.testResults)||body.testResults.length!==4||!review.decision||(review.issues?.trim().length??0)<8||(review.rationale?.trim().length??0)<8)return response({error:"invalid closed-loop engineering evidence"},user,400);
+    if(!task||!body.variantId||!validObservation(observation)||!validModel(systemModel)||!validDiagnosis(diagnosis)||!validPlan(actionPlan)||!validEvidence(evidence)||!validStateUpdate(stateUpdate)||!Array.isArray(body.testResults)||body.testResults.length!==4||!review.decision||!review.scopeDecision||(review.issues?.trim().length??0)<8||(review.rationale?.trim().length??0)<8||(review.understanding?.trim().length??0)<8||(review.rollback?.trim().length??0)<6)return response({error:"invalid controlled engineering evidence"},user,400);
     const db=getDb();const hintsUsed=Math.max(0,Math.min(3,Number(body.hintsUsed)||0));const firstHintSeconds=Math.max(0,Math.min(7200,Number(body.firstHintSeconds)||0));
     const autonomousDiagnosis=body.autonomousDiagnosis!==false;const independentCompletion=hintsUsed<3;
     const aiDependencyScore=Math.min(100,hintsUsed*22+(firstHintSeconds>0&&firstHintSeconds<120?18:0)+(autonomousDiagnosis?0:14));
@@ -99,11 +99,22 @@ export async function POST(request:Request){
     const reflectionBonus=(reflection.nextFirstStep?.trim().length??0)>=6?20:0;
     const engineeringOwnershipScore=Math.max(20,Math.min(100,Math.round(releaseScore*.55+specificationScore*.25+reflectionBonus)));
     const verificationScore=Math.round((releaseScore+specificationScore+100)/3);
+    const budget=task.changeBudget??{maxFiles:5,maxLines:320,maxModules:1,maxDependencies:0,maxMigrations:0,impactAnalysisRequired:false};const submission=task.aiSubmission;
+    const filesChanged=submission?.filesChanged??submission?.changedFiles.length??0;const linesAdded=submission?.linesAdded??0;const dependencyChanges=submission?.newDependencies??0;const migrationChanges=submission?.migrations??0;const reviewCapacity=Math.max(40,Number(review.reviewCapacity)||180);
+    const generationReviewRatio=Math.round(linesAdded/reviewCapacity*100)/100;
+    const cognitiveDebtScore=Math.min(100,Math.round((filesChanged/Math.max(1,budget.maxFiles)+linesAdded/Math.max(1,budget.maxLines)+dependencyChanges/Math.max(1,budget.maxDependencies||1)+migrationChanges/Math.max(1,budget.maxMigrations||1))*25));
+    const reviewCoverage=fieldScore([review.issues,review.rationale,review.revisionRequest,review.understanding,review.rollback]);
+    const understandingCoverage=fieldScore([review.understanding,review.rollback,actionPlan.impactAnalysis,actionPlan.excludedChanges,actionPlan.contextBudget]);
+    const diffReviewScore=Math.min(100,Math.round(reviewCoverage*.55+understandingCoverage*.25+(review.scopeDecision?20:0)));
+    const scopeControlScore=Math.min(100,Math.round(fieldScore([actionPlan.scopeGoal,actionPlan.proposedFiles,actionPlan.impactAnalysis,actionPlan.excludedChanges])*.7+(review.scopeDecision!=="accept"?30:15)));
+    const requiresSpecialApproval=dependencyChanges>0||migrationChanges>0||budget.impactAnalysisRequired;const architectureControlScore=Math.min(100,55+(review.architectureDriftDetected?20:10)+(requiresSpecialApproval&&review.impactApproved?25:requiresSpecialApproval?0:25));
+    const changeRiskScore=Math.min(100,Math.round(cognitiveDebtScore*.55+(review.riskLevel==="P0"?40:review.riskLevel==="P1"?30:review.riskLevel==="P2"?20:10)+(review.architectureDriftDetected?15:0)));
+    const controlledDeliveryScore=averageScore([100-cognitiveDebtScore,reviewCoverage,understandingCoverage,diffReviewScore,scopeControlScore,architectureControlScore,Math.max(0,100-Math.max(0,generationReviewRatio-1)*40)]);
     const loopReasoningScore=averageScore([observationScore,systemModelingScore,hypothesisScore,falsificationScore,planningScore,toolSelectionScore,stateUpdateScore,verificationScore]);
-    const score=Math.max(40,Math.round(loopReasoningScore*.48+(100-aiDependencyScore*.42)*.17+aiJudgmentScore*.2+engineeringOwnershipScore*.15));
+    const score=Math.max(40,Math.round(loopReasoningScore*.32+controlledDeliveryScore*.28+(100-aiDependencyScore*.42)*.12+aiJudgmentScore*.16+engineeringOwnershipScore*.12));
     const [current]=await db.select().from(profiles).where(eq(profiles.userId,user.userId)).limit(1);
     const skills=current?normalizeSkills(parseJson(current.skillsJson,{...baseSkills})):{...baseSkills};const awardedGains:Record<string,number>={};
-    const evidenceScores:Record<string,number>={Observation:observationScore,"System Modeling":systemModelingScore,Hypothesis:hypothesisScore,Falsification:falsificationScore,Planning:planningScore,"Tool Selection":toolSelectionScore,"State Update":stateUpdateScore,"AI Judgment":aiJudgmentScore,"AI Orchestration":toolSelectionScore,Specification:specificationScore,"Architecture Reasoning":systemModelingScore,Verification:verificationScore,"Engineering Ownership":engineeringOwnershipScore};
+    const evidenceScores:Record<string,number>={Observation:observationScore,"System Modeling":systemModelingScore,Hypothesis:hypothesisScore,Falsification:falsificationScore,Planning:planningScore,"Tool Selection":toolSelectionScore,"State Update":stateUpdateScore,"AI Judgment":aiJudgmentScore,"AI Orchestration":toolSelectionScore,Specification:specificationScore,"Architecture Reasoning":systemModelingScore,Verification:verificationScore,"Scope Control":scopeControlScore,"Cognitive Load Management":100-cognitiveDebtScore,"Review Capacity":Math.max(0,100-Math.max(0,generationReviewRatio-1)*40),"Context Management":fieldScore([actionPlan.contextBudget,actionPlan.excludedChanges]),"AI Output Control":scopeControlScore,"Change Impact Analysis":fieldScore([actionPlan.impactAnalysis,review.rollback]),"Diff Review":diffReviewScore,"Architecture Guardrails":architectureControlScore,"AI Pacing":Math.max(0,100-Math.max(0,generationReviewRatio-1)*40),"Engineering Ownership":engineeringOwnershipScore};
     const taskGainBudget=Object.entries(task.gains).reduce<Record<string,number>>((result,[name,value])=>{const mapped=currentSkillName(name);result[mapped]=(result[mapped]??0)+value;return result},{});
     const gainBudget:Record<string,number>={...Object.fromEntries(Object.keys(baseSkills).map(name=>[name,2])),...taskGainBudget};
     for(const[name,gain]of Object.entries(gainBudget)){const awarded=Math.max(1,Math.round(gain*((evidenceScores[name]??score)/100)*.35));skills[name]=Math.min(100,(skills[name]??40)+awarded);awardedGains[name]=awarded}
@@ -112,6 +123,6 @@ export async function POST(request:Request){
     await db.insert(profiles).values({userId:user.userId,displayName:user.displayName,xp,streak:current?.streak??7,skillsJson:JSON.stringify(skills),updatedAt:now}).onConflictDoUpdate({target:profiles.userId,set:{displayName:user.displayName,xp,skillsJson:JSON.stringify(skills),updatedAt:now}});
     const events=Object.entries(awardedGains).map(([skill,delta])=>({userId:user.userId,attemptId:attempt.id,skill,delta,reason:`${task.type} 验收通过`,createdAt:now}));
     if(events.length)await db.insert(skillEvents).values(events);
-    return response({ok:true,awarded:true,skills,xp,score,aiDependencyScore,aiJudgmentScore,engineeringOwnershipScore,specificationScore,releaseScore,systemModelingScore,planningScore,hypothesisScore,falsificationScore,observationScore,stateUpdateScore,toolSelectionScore,verificationScore,attempt:attemptPayload(attempt)},user);
+    return response({ok:true,awarded:true,skills,xp,score,aiDependencyScore,aiJudgmentScore,engineeringOwnershipScore,specificationScore,releaseScore,systemModelingScore,planningScore,hypothesisScore,falsificationScore,observationScore,stateUpdateScore,toolSelectionScore,verificationScore,cognitiveDebtScore,reviewCoverage,understandingCoverage,diffReviewScore,scopeControlScore,architectureControlScore,changeRiskScore,generationReviewRatio,attempt:attemptPayload(attempt)},user);
   }catch(error){return response({error:error instanceof Error?error.message:"save failed"},user,503)}
 }

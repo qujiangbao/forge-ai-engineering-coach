@@ -1,4 +1,4 @@
-const CACHE_NAME = "forge-shell-v1";
+const CACHE_NAME = "forge-shell-v2";
 const APP_SHELL = ["/", "/favicon.svg", "/manifest.webmanifest"];
 
 self.addEventListener("install", (event) => {
