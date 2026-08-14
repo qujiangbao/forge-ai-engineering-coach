@@ -15,6 +15,13 @@
       "when": 1786715915895,
       "tag": "0001_fine_smasher",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1786718067247,
+      "tag": "0002_sudden_bloodstorm",
+      "breakpoints": true
     }
   ]
 }

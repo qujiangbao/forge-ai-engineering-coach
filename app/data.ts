@@ -7,6 +7,8 @@ export type Task = {
   tools?: ("code"|"logs"|"network"|"sql"|"env"|"diff"|"tests")[];
   network?: string[]; sql?: string[]; env?: string[];
   variantId?: string; recommendationReason?: string;
+  aiSubmission?: { claim:string; confidence:number; changedFiles:string[]; diff:string; rationale:string; safe:boolean };
+  guardrails?: string[]; specificationDimensions?: string[]; completionClaims?: string[]; qualityRisks?: string[];
 };
 
 export type AcceptanceCheck = {
@@ -42,14 +44,24 @@ const extras: ExtraTask[] = [
   {id:"contract-break",type:"ACCEPTANCE TESTING",title:"接口字段重命名导致移动端崩溃",summary:"用契约测试识别兼容性破坏，设计渐进废弃而不是同步强切。",skills:["Acceptance Testing","Code Modification","Delivery"],level:3,bugType:"API 契约破坏",rootCause:"服务端删除旧字段但旧版客户端仍在使用",prompt:"单元测试都通过时，哪类测试能暴露消费者兼容问题？",contextTitle:"api/profile.ts",context:`return { displayName: user.name } // previously returned name`,solution:`return { name: user.name, displayName: user.name }\nadd consumer contract test for old and new clients\nmark name deprecated and monitor usage\nremove after supported version window`,gains:{"Acceptance Testing":8,"Code Modification":4,Delivery:4},tokens:[["name","displayName"],["contract","consumer"],["deprecated","monitor"],["version","window"]]},
   {id:"upload-security",type:"CODE MODIFICATION",title:"头像上传可伪装成可执行文件",summary:"在服务端验证内容、隔离存储并安全生成访问地址。",skills:["Code Modification","Debug","Acceptance Testing"],level:4,bugType:"文件上传",rootCause:"仅信任扩展名和客户端 MIME 类型",prompt:"用户提交的文件名、类型和内容，哪些都不能直接相信？",contextTitle:"api/upload.ts",context:`const file = form.get("file")\nawait publicBucket.put(file.name, file)`,solution:`const detected = await sniffMagicBytes(file)\nif (!ALLOWED_TYPES.has(detected) || file.size > MAX_SIZE) throw invalid()\nconst key = randomUUID()\nawait quarantineBucket.put(key, file)\nawait scan(key)\nreturn signedUrl(key)`,gains:{"Code Modification":7,Debug:4,"Acceptance Testing":5},tokens:[["MagicBytes","sniff"],["ALLOWED_TYPES","MAX_SIZE"],["quarantine","scan"],["randomUUID","signedUrl"]]},
   {id:"requirements-refund",type:"BUSINESS ANALYSIS",title:"把“支持退款”拆成可验收规则",summary:"澄清退款角色、时限、部分退款、原路退回和异常处理。",skills:["Business Analysis","Acceptance Testing","System Design"],level:2,bugType:"需求歧义",rootCause:"业务规则和异常分支未定义",prompt:"先不要画页面。退款成功在业务上到底意味着什么？",contextTitle:"interview/refund.md",context:`Stakeholder request: add refund support.\nKnown: card and wallet payments; finance needs reconciliation.`,solution:`roles customer support finance\nrules within 7 days and partial refund limit\nflow request approve provider refund reconcile\nidempotency by refund_id\nmetrics success rate latency and reconciliation mismatch`,gains:{"Business Analysis":8,"Acceptance Testing":5,"System Design":3},tokens:[["role","角色"],["7 days","7天","partial"],["approve","reconcile"],["idempotency","refund_id"]]},
+  {id:"review-ai-login-pr",type:"AI CODE REVIEW",title:"审查 AI 生成的登录 Pull Request",summary:"代码可以登录，但隐藏着明文密码、无限重试、缺少审计和会话失效风险。",skills:["Code Review","AI Judgment","Specification"],level:3,bugType:"能跑但不合格",rootCause:"AI 只满足成功路径，没有满足安全与运维规格",prompt:"不要先改代码。先指出 AI PR 中必须阻止合并的问题，并给出风险等级。",contextTitle:"pull-requests/login.diff",context:`+ export async function login(email, password) {\n+   const user = await db.user.findFirst({ where: { email, password } })\n+   return jwt.sign({ userId: user.id }, SECRET)\n+ }`,solution:`hash verify password\nrate limit brute force attempts\nshort lived access token and refresh token rotation\nRBAC authorization and audit log\nhandle invalid credentials without enumeration`,gains:{"Code Review":8,"AI Judgment":7,"Specification":5},tokens:[["hash","verify"],["rate limit","brute force"],["refresh token","rotation"],["RBAC","audit"]]},
+  {id:"review-ai-export-pr",type:"AI CODE REVIEW",title:"拒绝越界重构的导出修复",summary:"AI 为修复超时新增框架、绕过 Service 并直接访问数据库；识别架构漂移并要求最小改动。",skills:["Code Review","AI Judgment","System Design"],level:4,bugType:"架构漂移",rootCause:"AI 为局部性能问题擅自替换架构边界和依赖",prompt:"功能更快并不代表改动可接受。哪些变化超出了授权范围？",contextTitle:"pull-requests/export.diff",context:`+ import FastQueue from "fast-queue-next"\n+ import { rawDb } from "../database"\n- return exportService.create(request)\n+ await rawDb.query("insert into exports ...")\n+ return FastQueue.push(request)`,solution:`reject unauthorized dependency and direct database access\nkeep existing exportService architecture boundary\nprofile current queue latency first\nmake minimal change with rollback plan`,gains:{"Code Review":8,"AI Judgment":7,"System Design":5},tokens:[["reject","unauthorized"],["dependency","database"],["exportService","boundary"],["minimal","rollback"]]},
+  {id:"spec-login-completeness",type:"SPECIFICATION LAB",title:"把“帮我做登录”补成工程规格",summary:"补全功能、安全、权限、可靠性、日志、测试、部署与回滚要求。",skills:["Specification","Business Analysis","Engineering Ownership"],level:3,bugType:"隐性规格缺失",rootCause:"需求只描述功能，没有非功能约束与 Definition of Done",prompt:"在允许 AI 写代码前，哪些规格必须明确，才能对上线结果负责？",contextTitle:"requirements/login.md",context:`Requirement: 帮我做一个登录功能。\nUsers: staff and administrators.\nCurrent system: web + mobile clients.`,solution:`functional login logout refresh token\nsecurity password hashing csrf cors brute force rate limit\nauthorization RBAC session expiration\nreliability error handling audit logging monitoring\ntesting deployment rollback and database index`,gains:{Specification:9,"Business Analysis":5,"Engineering Ownership":6},tokens:[["login","logout","refresh"],["hash","csrf","rate limit"],["RBAC","session"],["test","rollback","monitor"]]},
+  {id:"verify-ai-completion",type:"COMPLETION VERIFICATION",title:"验证 AI 的“任务已全部完成”",summary:"对照变更文件、Diff、测试、API、数据库、权限、日志、部署和回滚证据，判断是否真的 Done。",skills:["AI Judgment","Acceptance Testing","Engineering Ownership"],level:4,bugType:"虚假完成声明",rootCause:"AI 只运行单元测试，却宣称数据库迁移和生产准备全部完成",prompt:"AI 的完成声明里，哪些是事实，哪些没有任何证据支持？",contextTitle:"handoff/completion.md",context:`AI: 已全部完成，所有测试通过，可以上线。\nEvidence: npm test (12 passed).\nChanged: api/users.ts, db/schema.ts\nMissing: migration output, permission test, rollback proof.`,solution:`inspect changed files and git diff\nrun API permission and regression tests\nverify database migration forward and rollback\ncheck logging monitoring deployment and rollback evidence`,gains:{"AI Judgment":8,"Acceptance Testing":6,"Engineering Ownership":7},tokens:[["changed files","git diff"],["permission","regression"],["migration","rollback"],["logging","monitoring","deployment"]]},
+  {id:"trust-high-confidence",type:"AI TRUST CALIBRATION",title:"AI 置信度 92%，实际方案仍然错误",summary:"用真实验收结果校准信任，而不是用表达流畅度或模型置信度替代证据。",skills:["AI Judgment","Code Review","Acceptance Testing"],level:4,bugType:"过度信任",rootCause:"高置信度建议忽略并发竞争，实际压力测试出现重复扣款",prompt:"在看到测试结果前，你愿意给这个建议多少信任？什么证据会改变它？",contextTitle:"reviews/payment-confidence.md",context:`AI confidence: 92%\nClaim: in-memory Set prevents duplicate payment processing.\nDeployment: 6 serverless instances.\nLoad test: duplicate charges = 17 / 10,000.`,solution:`reject in-memory idempotency across instances\nuse durable unique idempotency key and transaction\ncalibrate confidence with load test evidence\nrecord AI confidence versus actual failure rate`,gains:{"AI Judgment":9,"Code Review":5,"Acceptance Testing":5},tokens:[["reject","in-memory"],["idempotency","unique"],["transaction"],["confidence","failure rate"]]},
+  {id:"release-readiness-worker",type:"RELEASE READINESS",title:"决定批处理 Worker 是否可以上线",summary:"功能测试已过，但缺少告警、容量基线、迁移回滚和故障降级。给出 Ship / No-Ship 决策。",skills:["Engineering Ownership","AI Judgment","System Design"],level:5,bugType:"生产准备不足",rootCause:"完成开发不等于具备可运维、可回滚的上线条件",prompt:"如果明天凌晨失败，你能定位、止损、回滚并解释影响吗？",contextTitle:"release/worker-checklist.md",context:`Unit tests: pass\nIntegration tests: pass\nAlerting: none\nRollback: untested\nDB migration: destructive\nCapacity test: not run`,solution:`no ship until alerting and monitoring exist\nmake migration backward compatible and test rollback\nrun capacity and partial failure tests\ndocument owner impact blast radius and incident steps`,gains:{"Engineering Ownership":9,"AI Judgment":6,"System Design":5},tokens:[["no ship","alert"],["migration","backward compatible"],["capacity","partial failure"],["owner","blast radius","incident"]]},
 ];
 
 const extraChecks: Record<string,AcceptanceCheck[]> = Object.fromEntries(extras.map(item => [item.id,item.tokens.map((pair,index)=>({groups:[pair],failureHint:`验收点 ${index+1} 还缺少可验证的实现或证据。`}))]));
 
 function enrich(task:Task):Task {
   const level = task.difficultyLevel ?? (task.difficulty==="基础"?2:task.difficulty==="进阶"?3:5);
+  const {Delivery,...gains}=task.gains;
+  const normalizedGains=Delivery?{...gains,"Engineering Ownership":Delivery}:gains;
   return {
     ...task,
+    skills:task.skills.map(skill=>skill==="Delivery"?"Engineering Ownership":skill),
+    gains:normalizedGains,
     difficultyLevel:level,
     scenarioType:task.scenarioType ?? task.type,
     bugType:task.bugType ?? "工程判断",
@@ -63,6 +75,11 @@ function enrich(task:Task):Task {
     network:task.network ?? ["GET /health 200 18ms","POST /api/action 200 64ms","trace-id: forge-lab"],
     sql:task.sql ?? ["BEGIN;","SELECT state FROM affected_record;","-- inspect before COMMIT"],
     env:task.env ?? ["NODE_ENV=training","REGION=ap-southeast-1","FEATURE_MODE=safe"],
+    aiSubmission:task.aiSubmission ?? {claim:"AI：修改已经完成，主要路径可以工作，建议直接合并。",confidence:92,changedFiles:[task.contextTitle],diff:task.context,rationale:"优先让功能跑通，剩余问题可在后续迭代处理。",safe:false},
+    guardrails:task.guardrails ?? ["不得更换框架或新增依赖","不得绕过现有 Service 边界","数据库结构变更必须单独批准","只允许完成任务所需的最小改动"],
+    specificationDimensions:task.specificationDimensions ?? ["功能需求","安全","性能","可靠性","错误处理","授权","日志与监控","测试","部署","回滚","可维护性"],
+    completionClaims:task.completionClaims ?? ["Changed Files","Git Diff","Tests","API","Database","Migration","Permissions","Error Handling","Logging","Regression","Deployment","Rollback"],
+    qualityRisks:task.qualityRisks ?? ["Correctness","Maintainability","Performance","Security","Reliability","Observability","Testability","Architecture Drift"],
   };
 }
 
@@ -108,7 +125,7 @@ export function selectDailyTasks(recentVariantIds:string[],skills:Record<string,
   return selected;
 }
 
-export const baseSkills: Record<string,number> = {"Code Reading":72,"Code Modification":64,"Debug":61,"System Design":49,"Acceptance Testing":54,"Business Analysis":68,"AI Orchestration":57,"Delivery":52};
+export const baseSkills: Record<string,number> = {"Code Reading":72,"Code Modification":64,"Debug":61,"System Design":49,"Acceptance Testing":54,"Business Analysis":68,"AI Orchestration":57,"AI Judgment":46,"Specification":43,"Code Review":48,"Engineering Ownership":45};
 
 // Each acceptance criterion is backed by one or more semantic token groups.
 // A group passes when any of its tokens appears; every group must pass.

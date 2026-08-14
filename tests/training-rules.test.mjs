@@ -13,7 +13,7 @@ function evaluate(task, workspace) {
   );
 }
 
-test("covers the complete eight-skill matrix", () => {
+test("covers the complete eleven-skill AI engineering matrix", () => {
   assert.deepEqual(Object.keys(baseSkills), [
     "Code Reading",
     "Code Modification",
@@ -22,7 +22,10 @@ test("covers the complete eight-skill matrix", () => {
     "Acceptance Testing",
     "Business Analysis",
     "AI Orchestration",
-    "Delivery",
+    "AI Judgment",
+    "Specification",
+    "Code Review",
+    "Engineering Ownership",
   ]);
 });
 
@@ -63,4 +66,16 @@ test("task bank exposes multi-file labs and L1-L5 difficulty", () => {
     assert.ok(task.files.length >= 2, task.id);
     assert.ok(task.difficultyLevel >= 1 && task.difficultyLevel <= 5, task.id);
   }
+});
+
+test("every task can train AI review, specification and ownership", () => {
+  for (const task of tasks) {
+    assert.equal(typeof task.aiSubmission?.confidence, "number", task.id);
+    assert.ok(task.guardrails.length >= 4, task.id);
+    assert.equal(task.specificationDimensions.length, 11, task.id);
+    assert.equal(task.completionClaims.length, 12, task.id);
+  }
+  assert.ok(tasks.some((task) => task.type === "AI CODE REVIEW"));
+  assert.ok(tasks.some((task) => task.type === "SPECIFICATION LAB"));
+  assert.ok(tasks.some((task) => task.type === "COMPLETION VERIFICATION"));
 });
