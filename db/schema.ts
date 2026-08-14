@@ -1,16 +1,16 @@
-import { integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { integer, pgTable, serial, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 
-export const profiles = sqliteTable("profiles", {
+export const profiles = pgTable("profiles", {
   userId: text("user_id").primaryKey(),
   displayName: text("display_name").notNull(),
   xp: integer("xp").notNull().default(680),
   streak: integer("streak").notNull().default(7),
   skillsJson: text("skills_json").notNull().default("{}"),
-  updatedAt: text("updated_at").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
 });
 
-export const trainingSessions = sqliteTable("training_sessions", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
+export const trainingSessions = pgTable("training_sessions", {
+  id: serial("id").primaryKey(),
   userId: text("user_id").notNull(),
   taskId: text("task_id").notNull(),
   taskTitle: text("task_title").notNull(),
@@ -19,5 +19,5 @@ export const trainingSessions = sqliteTable("training_sessions", {
   hintsUsed: integer("hints_used").notNull().default(0),
   score: integer("score").notNull(),
   skillGainsJson: text("skill_gains_json").notNull(),
-  completedAt: text("completed_at").notNull(),
+  completedAt: timestamp("completed_at", { withTimezone: true }).notNull(),
 }, (table) => [uniqueIndex("idx_sessions_user_task").on(table.userId, table.taskId)]);

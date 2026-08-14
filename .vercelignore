@@ -1,0 +1,10 @@
+.openai
+.vinext
+.wrangler
+build
+dist
+examples
+outputs
+work
+worker
+vite.config.ts
