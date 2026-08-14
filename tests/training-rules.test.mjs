@@ -37,8 +37,16 @@ test("covers the complete world-model and AI-control engineering matrix", () => 
     "Architecture Guardrails",
     "AI Pacing",
     "Engineering Ownership",
+    "Requirement Convergence",
+    "Business Understanding",
+    "Requirement Completeness",
+    "Solution Convergence",
+    "Technical Tradeoff",
+    "Implementation Planning",
+    "Acceptance Design",
+    "Evidence Quality",
   ]);
-  assert.equal(Object.keys(baseSkills).length, 22);
+  assert.equal(Object.keys(baseSkills).length, 30);
 });
 
 test("every mission has four executable acceptance checks", () => {
@@ -120,4 +128,13 @@ test("bank covers all cognitive-load and scope-control challenges", () => {
     assert.ok(types.has(type), type);
   }
   assert.ok(tasks.length >= 40);
+});
+
+test("bank covers the complete four-layer funnel challenge set", () => {
+  const types = new Set(tasks.map((task) => task.type));
+  for (const type of ["AMBIGUOUS REQUIREMENT","CONFLICTING REQUIREMENT","WRONG SOLUTION","OVERENGINEERED SOLUTION","UNDERENGINEERED SOLUTION","MISSING ACCEPTANCE CRITERIA","FAKE AI COMPLETION","WRONG BUSINESS OUTCOME","NO BUG SCENARIO","WRONG REQUIREMENT","FDE CUSTOMER SIMULATION","AI ENGINEER FUNNEL"]) {
+    assert.ok(types.has(type), type);
+  }
+  assert.ok(tasks.length >= 52);
+  assert.equal(tasks.length * 5, 260);
 });
