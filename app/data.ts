@@ -4,9 +4,11 @@ export type Task = {
   logs: string[]; hints: string[]; patchLabel: string; solution: string; evidencePlaceholder: string; gains: Record<string,number>;
   difficultyLevel?: 1|2|3|4|5; scenarioType?: string; bugType?: string; rootCause?: string;
   files?: { path:string; language:string; content:string }[];
-  tools?: ("code"|"logs"|"network"|"sql"|"env"|"diff"|"tests")[];
+  tools?: ("code"|"logs"|"network"|"api"|"sql"|"db"|"docker"|"env"|"search"|"runtime"|"diff"|"tests")[];
   network?: string[]; sql?: string[]; env?: string[];
   variantId?: string; recommendationReason?: string;
+  scenarioClass?: "open-ended"|"ambiguous"|"incomplete-information"|"no-bug"|"false-alarm"|"multiple-root-causes"|"misleading-symptom"|"wrong-requirement"|"wrong-ai-advice"|"production-incident"|"multi-system-failure"|"cross-module-debugging";
+  faultInjection?: string; expectedObservation?: string; environmentFeedback?: string[];
   aiSubmission?: { claim:string; confidence:number; changedFiles:string[]; diff:string; rationale:string; safe:boolean };
   guardrails?: string[]; specificationDimensions?: string[]; completionClaims?: string[]; qualityRisks?: string[];
 };
@@ -50,6 +52,10 @@ const extras: ExtraTask[] = [
   {id:"verify-ai-completion",type:"COMPLETION VERIFICATION",title:"验证 AI 的“任务已全部完成”",summary:"对照变更文件、Diff、测试、API、数据库、权限、日志、部署和回滚证据，判断是否真的 Done。",skills:["AI Judgment","Acceptance Testing","Engineering Ownership"],level:4,bugType:"虚假完成声明",rootCause:"AI 只运行单元测试，却宣称数据库迁移和生产准备全部完成",prompt:"AI 的完成声明里，哪些是事实，哪些没有任何证据支持？",contextTitle:"handoff/completion.md",context:`AI: 已全部完成，所有测试通过，可以上线。\nEvidence: npm test (12 passed).\nChanged: api/users.ts, db/schema.ts\nMissing: migration output, permission test, rollback proof.`,solution:`inspect changed files and git diff\nrun API permission and regression tests\nverify database migration forward and rollback\ncheck logging monitoring deployment and rollback evidence`,gains:{"AI Judgment":8,"Acceptance Testing":6,"Engineering Ownership":7},tokens:[["changed files","git diff"],["permission","regression"],["migration","rollback"],["logging","monitoring","deployment"]]},
   {id:"trust-high-confidence",type:"AI TRUST CALIBRATION",title:"AI 置信度 92%，实际方案仍然错误",summary:"用真实验收结果校准信任，而不是用表达流畅度或模型置信度替代证据。",skills:["AI Judgment","Code Review","Acceptance Testing"],level:4,bugType:"过度信任",rootCause:"高置信度建议忽略并发竞争，实际压力测试出现重复扣款",prompt:"在看到测试结果前，你愿意给这个建议多少信任？什么证据会改变它？",contextTitle:"reviews/payment-confidence.md",context:`AI confidence: 92%\nClaim: in-memory Set prevents duplicate payment processing.\nDeployment: 6 serverless instances.\nLoad test: duplicate charges = 17 / 10,000.`,solution:`reject in-memory idempotency across instances\nuse durable unique idempotency key and transaction\ncalibrate confidence with load test evidence\nrecord AI confidence versus actual failure rate`,gains:{"AI Judgment":9,"Code Review":5,"Acceptance Testing":5},tokens:[["reject","in-memory"],["idempotency","unique"],["transaction"],["confidence","failure rate"]]},
   {id:"release-readiness-worker",type:"RELEASE READINESS",title:"决定批处理 Worker 是否可以上线",summary:"功能测试已过，但缺少告警、容量基线、迁移回滚和故障降级。给出 Ship / No-Ship 决策。",skills:["Engineering Ownership","AI Judgment","System Design"],level:5,bugType:"生产准备不足",rootCause:"完成开发不等于具备可运维、可回滚的上线条件",prompt:"如果明天凌晨失败，你能定位、止损、回滚并解释影响吗？",contextTitle:"release/worker-checklist.md",context:`Unit tests: pass\nIntegration tests: pass\nAlerting: none\nRollback: untested\nDB migration: destructive\nCapacity test: not run`,solution:`no ship until alerting and monitoring exist\nmake migration backward compatible and test rollback\nrun capacity and partial failure tests\ndocument owner impact blast radius and incident steps`,gains:{"Engineering Ownership":9,"AI Judgment":6,"System Design":5},tokens:[["no ship","alert"],["migration","backward compatible"],["capacity","partial failure"],["owner","blast radius","incident"]]},
+  {id:"incident-multi-root",type:"PRODUCTION INCIDENT",title:"结算延迟与重复扣款同时发生",summary:"多个症状并非单一根因。建立跨队列、支付与账本的状态模型，隔离两个故障并制定止损动作。",skills:["System Design","Debug","Engineering Ownership"],level:5,bugType:"多根因生产事故",rootCause:"队列消费者积压与支付幂等键失效同时发生",prompt:"不要用一个故事解释全部症状。哪两组证据可以拆开因果链？",contextTitle:"incidents/settlement.md",context:`checkout p95=8.4s\nqueue lag=19m\nduplicate charge=23\nledger mismatch=23\nprovider latency normal`,solution:`separate queue lag from duplicate charge hypothesis\ninspect consumer saturation and idempotency unique key\npause risky retries and drain queue with bounded concurrency\nrestore unique constraint then reconcile ledger\nmonitor lag duplicates and rollback`,gains:{"System Design":7,Debug:7,"Engineering Ownership":7},tokens:[["separate","hypothesis"],["consumer","idempotency"],["pause","bounded"],["unique","reconcile","rollback"]]},
+  {id:"false-alarm-metric",type:"FALSE ALARM",title:"错误率暴涨，但用户请求没有失败",summary:"监控口径变更制造了假警报。验证真实用户影响，拒绝无证据的紧急改码。",skills:["Debug","Acceptance Testing","AI Judgment"],level:4,bugType:"误报与错误指标",rootCause:"日志采集器把可重试的 429 计入最终失败率",prompt:"哪些独立信号能证明这是监控问题，而不是业务故障？",contextTitle:"observability/error-rate.md",context:`dashboard errors=38%\nAPI success=99.98%\ncustomer tickets=0\ncollector update=10:02\n429 retries recover=100%`,solution:`do not change business code\ncompare API success traces and customer impact\nfix collector classification for recovered 429\nbackfill dashboard and add metric contract test`,gains:{Debug:7,"Acceptance Testing":6,"AI Judgment":5},tokens:[["do not change","不改"],["API success","customer"],["429","classification"],["metric","contract test"]]},
+  {id:"customer-ambiguous-sync",type:"FDE SIMULATOR",title:"客户说“同步经常不准”",summary:"面对不完整信息，先还原业务状态、系统边界与成功定义，再决定是否修改代码。",skills:["Business Analysis","System Design","Specification"],level:4,bugType:"模糊客户问题",rootCause:"客户将延迟同步与字段覆盖规则混为一个问题",prompt:"先问什么，才能把“不准”拆成可观察、可验收的状态差异？",contextTitle:"customer/sync-notes.md",context:`Customer: CRM sync is often wrong.\nExamples: not provided.\nSystems: CRM, ERP, integration worker.\nOwnership rule: unclear.`,solution:`define current and expected state with examples\nmap CRM ERP worker boundary and data flow\nclarify field ownership conflict rule and latency SLA\ncreate replayable acceptance fixture and observation logs`,gains:{"Business Analysis":7,"System Design":7,Specification:7},tokens:[["current","expected"],["CRM","ERP","boundary"],["ownership","SLA"],["acceptance","logs"]]},
+  {id:"cross-module-auth-cache",type:"CROSS-MODULE DEBUG",title:"权限撤销后仍可访问十分钟",summary:"追踪认证、授权、缓存与网关的跨模块调用链，验证状态更新何处丢失。",skills:["Code Reading","System Design","Debug"],level:5,bugType:"跨模块状态不同步",rootCause:"授权服务已更新，但网关权限缓存未收到失效事件",prompt:"当前状态和期望状态分别存在于哪些系统？第一个失真的状态转移在哪里？",contextTitle:"architecture/auth-flow.md",context:`Admin → Auth Service(revoke) → DB\nRequest → Gateway(cache TTL=10m) → API\nInvalidation topic subscribers=0`,solution:`map revoke call chain and request data flow\npublish permission revoked event with user id\nsubscribe gateway and invalidate cache\nverify revoked request denied and cache state updated`,gains:{"Code Reading":5,"System Design":7,Debug:7},tokens:[["call chain","data flow"],["event","user id"],["gateway","invalidate"],["denied","cache state"]]},
 ];
 
 const extraChecks: Record<string,AcceptanceCheck[]> = Object.fromEntries(extras.map(item => [item.id,item.tokens.map((pair,index)=>({groups:[pair],failureHint:`验收点 ${index+1} 还缺少可验证的实现或证据。`}))]));
@@ -57,10 +63,13 @@ const extraChecks: Record<string,AcceptanceCheck[]> = Object.fromEntries(extras.
 function enrich(task:Task):Task {
   const level = task.difficultyLevel ?? (task.difficulty==="基础"?2:task.difficulty==="进阶"?3:5);
   const {Delivery,...gains}=task.gains;
-  const normalizedGains=Delivery?{...gains,"Engineering Ownership":Delivery}:gains;
+  const legacySkillMap:Record<string,string>={"Code Reading":"Observation","Code Modification":"State Update","Debug":"Hypothesis","System Design":"Architecture Reasoning","Acceptance Testing":"Verification","Business Analysis":"System Modeling","Code Review":"AI Judgment",Delivery:"Engineering Ownership"};
+  const normalizedGains:Record<string,number>={};
+  for(const[name,gain]of Object.entries(Delivery?{...gains,"Engineering Ownership":Delivery}:gains)){const mapped=legacySkillMap[name]??name;normalizedGains[mapped]=(normalizedGains[mapped]??0)+gain}
+  const normalizedSkills=[...new Set(task.skills.map(skill=>legacySkillMap[skill]??skill))];
   return {
     ...task,
-    skills:task.skills.map(skill=>skill==="Delivery"?"Engineering Ownership":skill),
+    skills:normalizedSkills,
     gains:normalizedGains,
     difficultyLevel:level,
     scenarioType:task.scenarioType ?? task.type,
@@ -71,7 +80,7 @@ function enrich(task:Task):Task {
       {path:task.contextTitle,language:task.contextTitle.endsWith(".py")?"python":"typescript",content:task.context},
       {path:"tests/acceptance.spec",language:"text",content:task.criteria.map((criterion,index)=>`CASE ${index+1}: ${criterion}`).join("\n")},
     ],
-    tools:task.tools ?? ["code","logs","network","sql","env","diff","tests"],
+    tools:task.tools ?? ["code","logs","network","api","sql","db","docker","env","search","runtime","diff","tests"],
     network:task.network ?? ["GET /health 200 18ms","POST /api/action 200 64ms","trace-id: forge-lab"],
     sql:task.sql ?? ["BEGIN;","SELECT state FROM affected_record;","-- inspect before COMMIT"],
     env:task.env ?? ["NODE_ENV=training","REGION=ap-southeast-1","FEATURE_MODE=safe"],
@@ -80,6 +89,10 @@ function enrich(task:Task):Task {
     specificationDimensions:task.specificationDimensions ?? ["功能需求","安全","性能","可靠性","错误处理","授权","日志与监控","测试","部署","回滚","可维护性"],
     completionClaims:task.completionClaims ?? ["Changed Files","Git Diff","Tests","API","Database","Migration","Permissions","Error Handling","Logging","Regression","Deployment","Rollback"],
     qualityRisks:task.qualityRisks ?? ["Correctness","Maintainability","Performance","Security","Reliability","Observability","Testability","Architecture Drift"],
+    scenarioClass:task.scenarioClass ?? (task.type==="NO-BUG TASK"?"no-bug":task.type==="AI WRONG ADVICE"?"wrong-ai-advice":task.type==="PRODUCTION INCIDENT"?"multiple-root-causes":task.type==="FALSE ALARM"?"false-alarm":task.type==="FDE SIMULATOR"?"ambiguous":task.type==="CROSS-MODULE DEBUG"?"cross-module-debugging":"open-ended"),
+    faultInjection:task.faultInjection ?? `注入 ${task.bugType??"未知状态"}：只提供部分运行信号，必须通过工具观察确认`,
+    expectedObservation:task.expectedObservation ?? "行动后应出现可重复、可记录且能改变当前假设可信度的环境信号",
+    environmentFeedback:task.environmentFeedback ?? ["运行时状态已刷新","新的证据已写入调查轨迹","系统模型需要根据观察结果更新"],
   };
 }
 
@@ -94,17 +107,17 @@ const generatedExtras:Task[] = extras.map((item,index)=>enrich({
 export const tasks:Task[] = [...coreTasks.map(enrich),...generatedExtras];
 
 const scenarioVariants = [
-  {key:"retail",label:"零售订单",fact:"峰值流量 1.8k/min"},
-  {key:"education",label:"教育 SaaS",fact:"多租户与学期规则"},
-  {key:"finance",label:"财务系统",fact:"审计与一致性优先"},
-  {key:"support",label:"客服平台",fact:"坐席实时使用"},
-  {key:"agent",label:"AI Agent",fact:"模型输出不可信"},
+  {key:"retail",label:"零售订单",fact:"峰值流量 1.8k/min",fault:"注入缓存与并发时序扰动"},
+  {key:"education",label:"教育 SaaS",fact:"多租户与学期规则",fault:"注入租户边界与规则版本偏差"},
+  {key:"finance",label:"财务系统",fact:"审计与一致性优先",fault:"注入重试、幂等与事务竞争"},
+  {key:"support",label:"客服平台",fact:"坐席实时使用",fault:"注入外部依赖降速与误报警报"},
+  {key:"agent",label:"AI Agent",fact:"模型输出不可信",fault:"注入高置信度错误建议与工具循环"},
 ];
 
 export function buildTaskVariant(task:Task, variantIndex:number, dayIndex:number):Task {
   const variant=scenarioVariants[Math.abs(variantIndex)%scenarioVariants.length];
   const files=task.files?.map((file,index)=>index===0?{...file,content:`// Scenario: ${variant.label} · ${variant.fact}\n${file.content}`}:file);
-  return {...task,variantId:`${task.id}:${variant.key}`,day:`DAILY / ${String(dayIndex%1000).padStart(3,"0")}`,title:`${variant.label} · ${task.title}`,facts:[["业务域",variant.label],["约束",variant.fact],...task.facts.slice(0,2)],files,context:`// Scenario: ${variant.label} · ${variant.fact}\n${task.context}`,recommendationReason:`针对 ${task.skills[0]} 的当前薄弱项推荐`};
+  return {...task,variantId:`${task.id}:${variant.key}`,day:`DAILY / ${String(dayIndex%1000).padStart(3,"0")}`,title:`${variant.label} · ${task.title}`,facts:[["业务域",variant.label],["约束",variant.fact],["故障注入",variant.fault],...task.facts.slice(0,1)],files,context:`// Scenario: ${variant.label} · ${variant.fact}\n${task.context}`,faultInjection:variant.fault,recommendationReason:`针对 ${task.skills[0]} 的当前薄弱项推荐 · 动态故障注入`};
 }
 
 export function selectDailyTasks(recentVariantIds:string[],skills:Record<string,number>,date=new Date(),count=3):Task[] {
@@ -125,7 +138,7 @@ export function selectDailyTasks(recentVariantIds:string[],skills:Record<string,
   return selected;
 }
 
-export const baseSkills: Record<string,number> = {"Code Reading":72,"Code Modification":64,"Debug":61,"System Design":49,"Acceptance Testing":54,"Business Analysis":68,"AI Orchestration":57,"AI Judgment":46,"Specification":43,"Code Review":48,"Engineering Ownership":45};
+export const baseSkills: Record<string,number> = {"System Modeling":52,"Planning":48,"Hypothesis":57,"Falsification":45,"Tool Selection":51,"Observation":62,"State Update":49,"AI Judgment":46,"AI Orchestration":57,"Specification":43,"Architecture Reasoning":49,"Verification":54,"Engineering Ownership":45};
 
 // Each acceptance criterion is backed by one or more semantic token groups.
 // A group passes when any of its tokens appears; every group must pass.

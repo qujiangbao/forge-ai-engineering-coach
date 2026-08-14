@@ -13,18 +13,20 @@ function evaluate(task, workspace) {
   );
 }
 
-test("covers the complete eleven-skill AI engineering matrix", () => {
+test("covers the complete thirteen-skill closed-loop engineering matrix", () => {
   assert.deepEqual(Object.keys(baseSkills), [
-    "Code Reading",
-    "Code Modification",
-    "Debug",
-    "System Design",
-    "Acceptance Testing",
-    "Business Analysis",
-    "AI Orchestration",
+    "System Modeling",
+    "Planning",
+    "Hypothesis",
+    "Falsification",
+    "Tool Selection",
+    "Observation",
+    "State Update",
     "AI Judgment",
+    "AI Orchestration",
     "Specification",
-    "Code Review",
+    "Architecture Reasoning",
+    "Verification",
     "Engineering Ownership",
   ]);
 });
@@ -78,4 +80,16 @@ test("every task can train AI review, specification and ownership", () => {
   assert.ok(tasks.some((task) => task.type === "AI CODE REVIEW"));
   assert.ok(tasks.some((task) => task.type === "SPECIFICATION LAB"));
   assert.ok(tasks.some((task) => task.type === "COMPLETION VERIFICATION"));
+});
+
+test("advanced bank covers ambiguous, false-alarm, multi-root and cross-module scenarios", () => {
+  const scenarioClasses = new Set(tasks.map((task) => task.scenarioClass));
+  for (const kind of ["ambiguous", "false-alarm", "multiple-root-causes", "cross-module-debugging", "wrong-ai-advice", "no-bug"]) {
+    assert.ok(scenarioClasses.has(kind), kind);
+  }
+  for (const task of tasks) {
+    assert.ok(task.faultInjection?.length > 8, task.id);
+    assert.ok(task.expectedObservation?.length > 8, task.id);
+    assert.ok(task.tools?.includes("runtime"), task.id);
+  }
 });
