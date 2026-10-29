@@ -20,6 +20,114 @@ export type AcceptanceCheck = {
   failureHint: string;
 };
 
+export type RequirementFieldName="user"|"why"|"what"|"input"|"output"|"constraints"|"priorities"|"successMetric"|"failureCondition"|"signals"|"sources"|"knownFacts"|"unknowns"|"assumptions"|"conflicts";
+export type RequirementValues=Partial<Record<RequirementFieldName,string>>;
+export type RequirementIssue={kind:"missing"|"ambiguous"|"conflict"|"evidence";field:RequirementFieldName;label:string;message:string;action:string};
+export interface ClarityDeduction{field:RequirementFieldName;term:string;deduction:number;reason:string}
+
+// ── 双模式类型 ──
+export type TrainingMode="starter"|"mastery";
+export type TaskProfile="code-change"|"code-understanding"|"design-analysis"|"review-verification";
+
+export function getTaskProfile(task:Task|{type:string}):TaskProfile {
+  const t=task.type;
+  if(/DEBUG|CODE MODIFICATION|CODE CHANGE|AI ORCHESTRATION/i.test(t))return"code-change";
+  if(/CODE READING/i.test(t))return"code-understanding";
+  if(/SYSTEM DESIGN|BUSINESS ANALYSIS|AMBIGUOUS|CONFLICTING|WRONG|FDE|FUNNEL/i.test(t))return"design-analysis";
+  if(/REVIEW|NO.BUG|FALSE.ALARM|COMPLETION|SPECIFICATION|TRUST|RELEASE|OVERSIZED|SCOPE CREEP|ARCHITECTURE DRIFT|UNNECESSARY|DEPENDENCY|MIGRATION|OVERGENERATION|CONTEXT DRIFT|HIDDEN|OVERLOAD/i.test(t))return"review-verification";
+  return"code-change";
+}
+
+// 入门模式 4 层配置：每层定义标签、必答字段及其来源状态对象
+export interface StarterLayer {
+  label:string;zh:string;phase:Phase;fields:StarterField[];
+}
+export interface StarterField {
+  key:string;label:string;placeholder:string;source:"observation"|"systemModel"|"diagnosis"|"actionPlan"|"evidence"|"reflection";
+  minLength?:number;
+}
+export const starterLayers:StarterLayer[]=[
+  {label:"Define",zh:"把任务说清楚",phase:"observe",fields:[
+    {key:"user",label:"谁使用或验收？",placeholder:"例如：客户运营经理王芳，负责验收上线结果",source:"observation",minLength:4},
+    {key:"what",label:"最终要改变什么状态？",placeholder:"例如：把待复核订单自动转成已确认状态",source:"observation",minLength:6},
+    {key:"successMetric",label:"什么结果算成功？",placeholder:"例如：以 8% 漏单率为基线，7 天内降至 1% 以下",source:"observation",minLength:6},
+    {key:"sources",label:"到哪里取得证据？",placeholder:"例如：生产日志 + 客服工单 + 接口响应",source:"observation",minLength:4},
+  ]},
+  {label:"Design",zh:"先判断再行动",phase:"model",fields:[
+    {key:"currentState",label:"当前事实或系统状态是什么？",placeholder:"例如：当前人工复核每天两小时，漏单率 8%",source:"systemModel",minLength:6},
+    {key:"hypothesis",label:"你认为最可能的原因或方案是什么？",placeholder:"例如：添加状态机 + 权限校验，确保一次确认后不可再改",source:"diagnosis",minLength:8},
+    {key:"firstCheckpoint",label:"先检查什么最有信息价值？",placeholder:"例如：查看 POST /orders/:id/confirm 的 owner_id 校验逻辑",source:"diagnosis",minLength:6},
+    {key:"counterEvidence",label:"什么证据会推翻你的判断？",placeholder:"例如：如果生产日志显示所有请求都通过了权限校验，则不是权限问题",source:"diagnosis",minLength:6},
+  ]},
+  {label:"Build",zh:"执行一个小动作",phase:"plan",fields:[
+    {key:"scopeGoal",label:"本轮唯一范围是什么？",placeholder:"例如：只修改 api/routes/orders.py 的 confirm_order 函数",source:"actionPlan",minLength:6},
+    {key:"selectedTool",label:"准备执行什么动作或使用什么工具？",placeholder:"例如：代码编辑器 + 运行测试",source:"actionPlan",minLength:2},
+    {key:"expectedObservation",label:"预期看到什么结果？",placeholder:"例如：重复确认返回 409，越权请求返回 404",source:"actionPlan",minLength:6},
+  ]},
+  {label:"Prove",zh:"用证据结束任务",phase:"learn",fields:[
+    {key:"actual",label:"实际观察到了什么？",placeholder:"例如：运行测试后 4 项验收全部通过，重复确认返回 409",source:"evidence",minLength:4},
+    {key:"keyEvidence",label:"哪条证据证明结论？",placeholder:"例如：测试输出显示越权请求被拒绝且状态机正确转换",source:"reflection",minLength:8},
+    {key:"largestRisk",label:"还有什么风险，失败时怎么办？",placeholder:"例如：如果并发请求同时到达，需确保事务隔离",source:"reflection",minLength:6},
+    {key:"nextFirstStep",label:"下次遇到同类问题，第一步做什么？",placeholder:"例如：先看业务不变量，再查权限校验和状态机",source:"reflection",minLength:6},
+  ]},
+];
+
+// Phase type (imported here for starterLayers; declared in page.tsx but needed here for config)
+type Phase="observe"|"model"|"hypothesize"|"plan"|"act"|"verify"|"update"|"learn"|"result";
+
+export const requirementSteps=[
+  {id:"who",label:"Who",fields:["user"],question:"谁使用、谁批准、谁承担失败后果？"},
+  {id:"why",label:"Why",fields:["why"],question:"为什么现在必须改变？不做的代价是什么？"},
+  {id:"what",label:"What",fields:["what"],question:"需要改变哪个业务状态，而不是采用哪种实现？"},
+  {id:"input-output",label:"Input / Output",fields:["input","output"],question:"输入从哪里来，最终输出交给谁？"},
+  {id:"constraint",label:"Constraint",fields:["constraints","priorities"],question:"哪些边界不可违反，发生冲突时优先保什么？"},
+  {id:"success-metric",label:"Success Metric",fields:["successMetric"],question:"用什么基线、目标值和时间窗证明成功？"},
+  {id:"failure-condition",label:"Failure Condition",fields:["failureCondition"],question:"什么结果即使测试通过也不能接受？"},
+  {id:"evidence",label:"Evidence",fields:["signals","sources"],question:"到哪里观察结果，哪一个来源是事实依据？"},
+  {id:"known-unknown",label:"Known / Unknown",fields:["knownFacts","unknowns"],question:"哪些已被证据确认，哪些仍需调查？"},
+  {id:"assumptions-conflicts",label:"Assumptions / Conflicts",fields:["assumptions","conflicts"],question:"哪些是假设，约束冲突由谁裁决？"},
+] as const satisfies readonly {id:string;label:string;fields:readonly RequirementFieldName[];question:string}[];
+
+const requirementFields:readonly [RequirementFieldName,string][]=[["user","用户定义"],["why","业务目的"],["what","目标状态"],["input","输入"],["output","输出"],["constraints","约束"],["priorities","取舍优先级"],["successMetric","成功指标"],["failureCondition","失败条件"],["signals","可观察信号"],["sources","证据来源"],["knownFacts","已知事实"],["unknowns","未知项"],["assumptions","假设登记"],["conflicts","冲突判断"]];
+const placeholderPattern=/^(请输入|请填写|待补充|稍后填写|暂无|无|未知|todo|tbd|n\/?a|placeholder)[。.!！]?$/i;
+const measurablePattern=/\d|%|百分|毫秒|秒内|分钟内|小时内|天内|成功率|错误率|不超过|至少|小于|大于|基线|目标值/i;
+const vagueTerms=["更快","更智能","更稳定","体验更好","尽可能","高效","最好","优化一下"] as const;
+export function isMeaningfulRequirementValue(value:unknown,minLength=4){const text=typeof value==="string"?value.trim():"";return text.length>=minLength&&!placeholderPattern.test(text)}
+function boundedScore(value:number){return Math.max(0,Math.min(100,Math.round(Number.isFinite(value)?value:0)))}
+export function analyzeRequirement(value:RequirementValues){
+  const read=(key:RequirementFieldName)=>value[key]?.trim()??"";
+  const issues:RequirementIssue[]=requirementFields.filter(([key])=>!isMeaningfulRequirementValue(read(key))).map(([field,label])=>({kind:"missing",field,label:`Missing ${label}`,message:`${label}尚未形成可审查的信息。`,action:`先补充${label}，只写一个最关键事实。`}));
+  // 扩展检测: 所有需求字段, 上下文感知豁免
+  const vagueCheckFields:RequirementFieldName[]=["user","why","what","input","output","constraints","priorities","successMetric","failureCondition","signals","sources","knownFacts","unknowns","assumptions","conflicts"];
+  const clarityDeductions:ClarityDeduction[]=[];
+  for(const field of vagueCheckFields){
+    const text=read(field);
+    if(!isMeaningfulRequirementValue(text))continue;
+    const hasMeasurable=measurablePattern.test(text);
+    const isDefining=/定义为|拆为|拆解|度量|量化|基线|目标值|观察窗|时间窗|NDCG|CTR|p\d/i.test(text);
+    for(const term of vagueTerms){
+      if(text.includes(term)){
+        if(hasMeasurable&&isDefining){clarityDeductions.push({field,term,deduction:0,reason:`"${term}"已被量化定义，豁免`});break}
+        issues.push({kind:"ambiguous",field,label:`Ambiguous: "${term}"`,message:`"${term}"无法直接验收。`,action:`把"${term}"改成可度量的基线、目标值和观察时间窗。`});
+        clarityDeductions.push({field,term,deduction:25,reason:`"${term}"缺少可度量定义`});
+        break;
+      }
+    }
+  }
+  const measurable=measurablePattern.test(read("successMetric"));
+  if(isMeaningfulRequirementValue(read("successMetric"))&&!measurable)issues.push({kind:"ambiguous",field:"successMetric",label:"Success Metric Not Measurable",message:"成功标准没有阈值、基线或观察窗口。",action:"先写清从什么基线提升到什么目标，以及如何取证。"});
+  if(/^(安全|稳定|高效|安全、稳定、高效|兼容|低成本)[。.]?$/.test(read("constraints")))issues.push({kind:"ambiguous",field:"constraints",label:"Generic Constraint",message:"约束只是口号，不能限制方案。",action:"为约束补充边界、阈值、优先级或不可违反条件。"});
+  if(/我觉得|应该|大概|可能|估计/.test(read("knownFacts")))issues.push({kind:"evidence",field:"knownFacts",label:"Fact / Assumption Mixed",message:"已知事实中包含未经验证的判断。",action:"把推测移到假设登记，并写明验证它所需的证据。"});
+  const impossible=[/最低成本.*(实时|高可用)|(实时|高可用).*最低成本/,/零外部请求.*实时|实时.*零外部请求/,/零摩擦.*最高安全|最高安全.*零摩擦/].some(pattern=>pattern.test(`${read("constraints")}${read("conflicts")}`));
+  if(impossible&&!isMeaningfulRequirementValue(read("priorities"),8))issues.push({kind:"conflict",field:"priorities",label:"Constraint Conflict",message:"当前约束可能无法同时成立。",action:"明确 Must / Should / Could，并由业务负责人裁决取舍。"});
+  const completeness=boundedScore(requirementFields.filter(([key])=>isMeaningfulRequirementValue(read(key))).length/requirementFields.length*100);
+  const clarityPenalty=clarityDeductions.reduce((sum,d)=>sum+d.deduction,0);
+  const dimensions={Clarity:boundedScore(100-clarityPenalty-(isMeaningfulRequirementValue(read("what"),8)?0:40)),Completeness:completeness,Consistency:issues.some(issue=>issue.kind==="conflict")?35:isMeaningfulRequirementValue(read("conflicts"))?100:0,Feasibility:isMeaningfulRequirementValue(read("constraints"),8)?100:isMeaningfulRequirementValue(read("constraints"))?60:0,Testability:measurable&&isMeaningfulRequirementValue(read("failureCondition"))?100:measurable?55:20,Evidence:isMeaningfulRequirementValue(read("sources"))&&isMeaningfulRequirementValue(read("signals"))?100:40};
+  const quality=boundedScore(Object.values(dimensions).reduce((sum,item)=>sum+item,0)/Object.values(dimensions).length);
+  const blocking=issues.filter(issue=>issue.kind!=="conflict"||impossible);
+  return{issues,blocking,completeness,quality,dimensions,clarityDeductions,nextAction:issues[0]?.action??"逐条复核快照，然后由你决定是否锁定需求。"};
+}
+
 const coreTasks: Task[] = [
   { id:"order-confirm",day:"DAILY / 014",type:"DEBUG LAB",title:"订单显示成功，但数据没有更新",summary:"客服发现部分订单确认后仍可修改。定位持久化与权限风险，提交最小修复并给出验收证据。",duration:35,difficulty:"进阶",skills:["Debug","Acceptance Testing","Business Analysis"],facts:[["API","POST /orders/:id/confirm"],["响应","200 OK"],["频率","约 1 / 20"],["影响","状态与权限风险"]],criteria:["订单状态持久化","越权请求被拒绝","重复确认行为明确","原流程无回归"],prompt:"你认为最可能的根因是什么？先检查哪里？什么证据能推翻你的判断？",contextTitle:"api/routes/orders.py",context:`@router.post("/orders/{order_id}/confirm")\nasync def confirm_order(order_id: UUID, current_user=Depends(get_user), db=Depends(get_db)):\n    order = await order_service.get(db, order_id)\n    order.status = OrderStatus.CONFIRMED\n    await db.commit()\n    return {"success": True, "order": order}`,logs:["10:42:11 POST /orders/7f2a/confirm  200 48ms","10:42:11 transaction committed session=8a21","10:42:13 GET /orders/7f2a status=PENDING","10:42:14 user_id=usr_018 owner_id=usr_004"],hints:["不要只盯着 commit；列出这个接口承诺的业务不变量。","检查对象是否存在、owner_id 是否匹配，以及合法状态转换。"],patchLabel:"应用最小修复",solution:`order = await order_service.get(db, order_id)\nif not order or order.owner_id != current_user.id:\n    raise HTTPException(404, "Order not found")\nif order.status != OrderStatus.PENDING:\n    raise HTTPException(409, "Invalid state")\norder.status = OrderStatus.CONFIRMED\nawait db.commit()\nawait db.refresh(order)`,evidencePlaceholder:"写下你的证据链：运行了什么、观察到什么、为什么足以证明修复成立……",gains:{"Debug":5,"Acceptance Testing":7,"Business Analysis":2}},
   { id:"trace-rag",day:"DAILY / 015",type:"CODE READING",title:"读懂一次 RAG 请求的完整调用链",summary:"新人把检索为空归因于模型。请沿调用链定位数据在哪一层丢失，并解释每个模块的职责。",duration:30,difficulty:"基础",skills:["Code Reading","System Design","AI Orchestration"],facts:[["入口","POST /chat"],["症状","sources = []"],["模型","响应正常"],["范围","6 个模块"]],criteria:["还原完整调用链","区分检索与生成职责","找出空结果分支","给出可观测性建议"],prompt:"不运行代码时，你如何预测数据流？哪一层最值得先读，为什么？",contextTitle:"services/chat_service.ts",context:`export async function answer(query: string) {\n  const intent = await supervisor.route(query)\n  const chunks = await retriever.search(intent.query)\n  const context = reranker.topK(chunks, 5)\n  return generator.complete({ query, context })\n}`,logs:["route intent=knowledge_query confidence=.94","search namespace=school-docs filters={year:2026}","vector hits=0 latency=12ms","generator context_tokens=0 response=200"],hints:["先区分控制流与数据流，再标记每一步输入输出。","检索使用了 namespace 和 filter；哪一个最可能让召回变成 0？"],patchLabel:"标注调用链",solution:`POST /chat → supervisor.route → retriever.search\n→ vector DB(namespace + filters) → reranker.topK\n→ generator.complete → response\n\nRoot cause candidate: an over-restrictive year filter makes vector hits = 0.\nObservability: log namespace, filters, vector hit count and context tokens.`,evidencePlaceholder:"用自己的话解释调用链，并说明哪条日志支持你的结论……",gains:{"Code Reading":7,"System Design":3,"AI Orchestration":3}},
@@ -164,7 +272,7 @@ export function selectDailyTasks(recentVariantIds:string[],skills:Record<string,
   return selected;
 }
 
-export const baseSkills: Record<string,number> = {"System Modeling":52,"Planning":48,"Hypothesis":57,"Falsification":45,"Tool Selection":51,"Observation":62,"State Update":49,"AI Judgment":46,"AI Orchestration":57,"Specification":43,"Architecture Reasoning":49,"Verification":54,"Scope Control":44,"Cognitive Load Management":42,"Review Capacity":41,"Context Management":50,"AI Output Control":43,"Change Impact Analysis":46,"Diff Review":48,"Architecture Guardrails":49,"AI Pacing":42,"Engineering Ownership":45,"Requirement Convergence":41,"Business Understanding":44,"Requirement Completeness":39,"Solution Convergence":43,"Technical Tradeoff":42,"Implementation Planning":45,"Acceptance Design":44,"Evidence Quality":46};
+export const baseSkills: Record<string,number> = {"System Modeling":52,"Planning":48,"Hypothesis":57,"Falsification":45,"Tool Selection":51,"Observation":62,"State Update":49,"AI Judgment":46,"AI Orchestration":57,"Specification":43,"Architecture Reasoning":49,"Verification":54,"Scope Control":44,"Cognitive Load Management":42,"Review Capacity":41,"Context Management":50,"AI Output Control":43,"Change Impact Analysis":46,"Diff Review":48,"Architecture Guardrails":49,"AI Pacing":42,"Engineering Ownership":45,"Requirement Convergence":41,"Business Understanding":44,"Requirement Completeness":39,"Requirement Clarification":40,"Requirement Testability":38,"Requirement Prioritization":41,"Constraint Reasoning":42,"Conflict Resolution":39,"Assumption Management":38,"Evidence Definition":41,"Solution Convergence":43,"Technical Tradeoff":42,"Implementation Planning":45,"Acceptance Design":44,"Evidence Quality":46};
 
 // Each acceptance criterion is backed by one or more semantic token groups.
 // A group passes when any of its tokens appears; every group must pass.

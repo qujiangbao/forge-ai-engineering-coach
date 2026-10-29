@@ -5,14 +5,19 @@ import { taskCatalog } from "../../../db/schema";
 import { tasks, type Task } from "../../data";
 
 export const runtime="nodejs";
+export const dynamic="force-dynamic";
+const ADMIN_QUERY_TIMEOUT_MS=8000;
 function authorized(request:Request){const expected=process.env.FORGE_ADMIN_KEY;return Boolean(expected&&request.headers.get("x-forge-admin-key")===expected)}
 function slug(value:string){return value.toLowerCase().trim().replace(/[^a-z0-9\u4e00-\u9fa5]+/g,"-").replace(/^-|-$/g,"").slice(0,48)||crypto.randomUUID().slice(0,8)}
+function noStore(body:unknown,status=200){return NextResponse.json(body,{status,headers:{"cache-control":"private, no-store, max-age=0"}})}
+function withTimeout<T>(promise:Promise<T>,milliseconds:number){return Promise.race([promise,new Promise<never>((_,reject)=>setTimeout(()=>reject(new Error("admin catalog timeout")),milliseconds))])}
 
 export async function GET(request:Request){
   const url=new URL(request.url);const mode=url.searchParams.get("mode");
-  if(mode==="catalog"&&!authorized(request))return NextResponse.json({error:"admin key required"},{status:401});
-  try{const rows=await getDb().select().from(taskCatalog).orderBy(desc(taskCatalog.updatedAt));return NextResponse.json({builtIn:tasks.map(({id,title,type,difficultyLevel,skills})=>({id,title,type,difficultyLevel,skills,published:true})),custom:rows.map(row=>({...row,task:JSON.parse(row.taskJson)})),adminEnabled:Boolean(process.env.FORGE_ADMIN_KEY)})}
-  catch{return NextResponse.json({builtIn:tasks.map(({id,title,type,difficultyLevel,skills})=>({id,title,type,difficultyLevel,skills,published:true})),custom:[],adminEnabled:Boolean(process.env.FORGE_ADMIN_KEY)})}
+  if(mode==="catalog"&&!authorized(request))return noStore({error:"admin key required"},401);
+  const builtIn=tasks.map(({id,title,type,difficultyLevel,skills})=>({id,title,type,difficultyLevel,skills,published:true}));
+  try{const rows=await withTimeout(getDb().select().from(taskCatalog).orderBy(desc(taskCatalog.updatedAt)),ADMIN_QUERY_TIMEOUT_MS);return noStore({builtIn,custom:rows.map(row=>({...row,task:JSON.parse(row.taskJson)})),adminEnabled:Boolean(process.env.FORGE_ADMIN_KEY)})}
+  catch{return mode==="catalog"?noStore({error:"task catalog temporarily unavailable"},503):noStore({builtIn,custom:[],adminEnabled:Boolean(process.env.FORGE_ADMIN_KEY)})}
 }
 
 export async function POST(request:Request){
